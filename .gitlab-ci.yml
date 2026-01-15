@@ -1,0 +1,114 @@
+# CPI-Food Deployment - GitLab CI/CD
+#
+# This pipeline deploys services to production server.
+#
+# Required Variables (Settings > CI/CD > Variables):
+#   - DOCKERHUB_USERNAME: DockerHub username
+#   - DOCKERHUB_PASSWORD: DockerHub access token (masked)
+#   - SSH_PRIVATE_KEY: SSH private key for deployment (file type)
+#   - REMOTE_HOST: Production server IP/hostname
+#   - REMOTE_USER: SSH user for deployment
+
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+# Template for deployment jobs
+.deploy_template: &deploy_template
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    # Setup SSH
+    - apk add --no-cache openssh-client bash git
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+    - chmod 600 ~/.ssh/deploy_key
+    - ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
+    
+    # Docker login
+    - echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+  script:
+    - chmod +x ./deploy.sh
+    - export SSH_KEY=~/.ssh/deploy_key
+    - ./deploy.sh ${SERVICE} --yes --env ${ENVIRONMENT}
+
+# Production deployments (manual)
+deploy:admin-dashboard:production:
+  <<: *deploy_template
+  stage: deploy
+  variables:
+    SERVICE: admin-dashboard
+    ENVIRONMENT: production
+  when: manual
+  environment:
+    name: production
+    url: https://admin.example.com
+  only:
+    - main
+
+deploy:keystore:production:
+  <<: *deploy_template
+  stage: deploy
+  variables:
+    SERVICE: keystore
+    ENVIRONMENT: production
+  when: manual
+  environment:
+    name: production
+  only:
+    - main
+
+deploy:landingpage:production:
+  <<: *deploy_template
+  stage: deploy
+  variables:
+    SERVICE: landingpage
+    ENVIRONMENT: production
+  when: manual
+  environment:
+    name: production
+    url: https://example.com
+  only:
+    - main
+
+# Deploy all services
+deploy:all:production:
+  <<: *deploy_template
+  stage: deploy
+  variables:
+    SERVICE: "--all"
+    ENVIRONMENT: production
+  when: manual
+  environment:
+    name: production
+  only:
+    - main
+
+# Staging deployments (auto on develop branch)
+deploy:admin-dashboard:staging:
+  <<: *deploy_template
+  stage: deploy
+  variables:
+    SERVICE: admin-dashboard
+    ENVIRONMENT: staging
+  environment:
+    name: staging
+    url: https://staging-admin.example.com
+  only:
+    - develop
+
+# Dry-run job (for testing)
+dry-run:
+  <<: *deploy_template
+  stage: build
+  script:
+    - chmod +x ./deploy.sh
+    - ./deploy.sh admin-dashboard --dry-run
+  when: manual
+  only:
+    - merge_requests

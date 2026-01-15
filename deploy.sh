@@ -1,0 +1,607 @@
+#!/usr/bin/env bash
+#==============================================================================
+#
+#   ██████╗ ███████╗██████╗ ██╗      ██████╗ ██╗   ██╗
+#   ██╔══██╗██╔════╝██╔══██╗██║     ██╔═══██╗╚██╗ ██╔╝
+#   ██║  ██║█████╗  ██████╔╝██║     ██║   ██║ ╚████╔╝
+#   ██║  ██║██╔══╝  ██╔═══╝ ██║     ██║   ██║  ╚██╔╝
+#   ██████╔╝███████╗██║     ███████╗╚██████╔╝   ██║
+#   ╚═════╝ ╚══════╝╚═╝     ╚══════╝ ╚═════╝    ╚═╝
+#
+#   Deploy CLI - Professional Docker Deployment Tool
+#   https://github.com/arramandhanu/deploy-cli
+#
+#   Usage: ./deploy.sh [OPTIONS] [SERVICE...]
+#
+#
+#==============================================================================
+set -euo pipefail
+
+# Script directory
+readonly DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export DEPLOY_ROOT
+
+# Source libraries
+source "${DEPLOY_ROOT}/lib/colors.sh"
+source "${DEPLOY_ROOT}/lib/utils.sh"
+source "${DEPLOY_ROOT}/lib/checks.sh"
+source "${DEPLOY_ROOT}/lib/docker.sh"
+source "${DEPLOY_ROOT}/lib/ssh.sh"
+
+#------------------------------------------------------------------------------
+# Version
+#------------------------------------------------------------------------------
+readonly VERSION="1.0.0"
+
+#------------------------------------------------------------------------------
+# Default options
+#------------------------------------------------------------------------------
+DRY_RUN=false
+SKIP_CHECKS=false
+SKIP_BUILD=false
+SKIP_DEPLOY=false
+SKIP_CONFIRM=false
+SHOW_LOGS=true
+CUSTOM_TAG=""
+ENVIRONMENT="production"
+ROLLBACK=false
+
+#------------------------------------------------------------------------------
+# Show usage/help
+#------------------------------------------------------------------------------
+show_help() {
+    # Load config to get PROJECT_NAME and services list
+    local config_file="${DEPLOY_ROOT}/config/services.env"
+    local project_name="Deploy CLI"
+    local services_list=""
+    
+    if [[ -f "$config_file" ]]; then
+        source "$config_file"
+        project_name="${PROJECT_NAME:-Deploy CLI}"
+        services_list="${SERVICES:-}"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${CYAN}║${RESET}           ${BOLD}${WHITE}${project_name} DEPLOYMENT TOOL${RESET} ${GRAY}v${VERSION}${RESET}${CYAN}                  ║${RESET}"
+    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}USAGE${RESET}"
+    echo -e "    ${GREEN}./deploy.sh${RESET} ${GRAY}[OPTIONS]${RESET} ${CYAN}[SERVICE...]${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}SERVICES${RESET}"
+    if [[ -n "$services_list" ]]; then
+        IFS=',' read -ra svc_array <<< "$services_list"
+        for svc in "${svc_array[@]}"; do
+            echo -e "    ${CYAN}${svc}${RESET}"
+        done
+    else
+        echo -e "    ${GRAY}(configure in config/services.env)${RESET}"
+    fi
+    echo ""
+    echo -e "${BOLD}${YELLOW}OPTIONS${RESET}"
+    echo -e "    ${GREEN}-h${RESET}, ${GREEN}--help${RESET}          Show this help message"
+    echo -e "    ${GREEN}-v${RESET}, ${GREEN}--version${RESET}       Show version"
+    echo -e "    ${GREEN}-l${RESET}, ${GREEN}--list${RESET}          List available services"
+    echo -e "    ${GREEN}-a${RESET}, ${GREEN}--all${RESET}           Deploy all services"
+    echo -e "    ${GREEN}-e${RESET}, ${GREEN}--env${RESET} ${GRAY}ENV${RESET}       Environment (staging|production) ${GRAY}[default: production]${RESET}"
+    echo -e "    ${GREEN}-t${RESET}, ${GREEN}--tag${RESET} ${GRAY}TAG${RESET}       Use custom image tag instead of git commit SHA"
+    echo -e "    ${GREEN}-n${RESET}, ${GREEN}--dry-run${RESET}       Preview what would be executed (no changes)"
+    echo -e "    ${GREEN}-y${RESET}, ${GREEN}--yes${RESET}           Skip confirmation prompts"
+    echo -e "    ${GRAY}--skip-checks${RESET}       Skip pre-flight checks (not recommended)"
+    echo -e "    ${GRAY}--build-only${RESET}        Build and push only, skip deployment"
+    echo -e "    ${GRAY}--deploy-only${RESET}       Deploy only, skip build (requires --tag)"
+    echo -e "    ${GRAY}--rollback${RESET}          Rollback to previous version"
+    echo -e "    ${GRAY}--no-logs${RESET}           Don't show container logs after deploy"
+    echo ""
+    echo -e "${BOLD}${YELLOW}EXAMPLES${RESET}"
+    echo -e "    ${GRAY}# Deploy a single service${RESET}"
+    echo -e "    ${WHITE}./deploy.sh my-service${RESET}"
+    echo ""
+    echo -e "    ${GRAY}# Deploy multiple services${RESET}"
+    echo -e "    ${WHITE}./deploy.sh frontend backend${RESET}"
+    echo ""
+    echo -e "    ${GRAY}# Deploy all services${RESET}"
+    echo -e "    ${WHITE}./deploy.sh --all${RESET}"
+    echo ""
+    echo -e "    ${GRAY}# Preview deployment (dry-run)${RESET}"
+    echo -e "    ${WHITE}./deploy.sh my-service --dry-run${RESET}"
+    echo ""
+    echo -e "    ${GRAY}# Deploy to staging environment${RESET}"
+    echo -e "    ${WHITE}./deploy.sh my-service --env staging${RESET}"
+    echo ""
+    echo -e "    ${GRAY}# Rollback to previous version${RESET}"
+    echo -e "    ${WHITE}./deploy.sh my-service --rollback${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}ENVIRONMENT${RESET}"
+    echo -e "    ${CYAN}DOCKERHUB_USERNAME${RESET}  DockerHub username ${RED}(required)${RESET}"
+    echo -e "    ${CYAN}DOCKERHUB_PASSWORD${RESET}  DockerHub password/token ${RED}(required)${RESET}"
+    echo ""
+    echo -e "    ${GRAY}Configure credentials in .env file or export as environment variables.${RESET}"
+    echo ""
+}
+
+#------------------------------------------------------------------------------
+# Show version
+#------------------------------------------------------------------------------
+show_version() {
+    echo "Deploy CLI version ${VERSION}"
+}
+
+#------------------------------------------------------------------------------
+# Helper: Convert string to uppercase (bash 3.x compatible)
+#------------------------------------------------------------------------------
+to_upper() {
+    echo "$1" | tr '[:lower:]' '[:upper:]' | tr '-' '_'
+}
+
+#------------------------------------------------------------------------------
+# List available services
+#------------------------------------------------------------------------------
+list_available_services() {
+    local project_name="${PROJECT_NAME:-Deploy CLI}"
+    print_header "${project_name} - AVAILABLE SERVICES"
+    
+    local config_file="${DEPLOY_ROOT}/config/services.env"
+    
+    if [[ ! -f "$config_file" ]]; then
+        log_error "Configuration file not found: $config_file"
+        log_info "Please copy config/services.env.template to config/services.env and configure it."
+        exit 1
+    fi
+    
+    source "$config_file"
+    
+    echo -e "${BOLD}Services:${RESET}"
+    echo ""
+    
+    IFS=',' read -ra services <<< "$SERVICES"
+    for service in "${services[@]}"; do
+        local upper_service
+        upper_service=$(to_upper "$service")
+        local image_var="${upper_service}_IMAGE"
+        local image="${!image_var:-unknown}"
+        
+        printf "  ${GREEN}%-20s${RESET} %s\n" "$service" "$image"
+    done
+    
+    echo ""
+    echo -e "${GRAY}Use: ./deploy.sh <service> to deploy${RESET}"
+}
+
+#------------------------------------------------------------------------------
+# Load configuration
+#------------------------------------------------------------------------------
+load_config() {
+    local config_file="${DEPLOY_ROOT}/config/services.env"
+    local env_file="${DEPLOY_ROOT}/.env"
+    
+    # Load main .env if exists
+    if [[ -f "$env_file" ]]; then
+        log_info "Loading environment from .env"
+        load_env_file "$env_file"
+    fi
+    
+    # Load environment-specific .env if exists
+    local env_specific_file="${DEPLOY_ROOT}/.env.${ENVIRONMENT}"
+    if [[ -f "$env_specific_file" ]]; then
+        log_info "Loading environment from .env.${ENVIRONMENT}"
+        load_env_file "$env_specific_file"
+    fi
+    
+    # Load services config
+    if [[ ! -f "$config_file" ]]; then
+        log_error "Configuration file not found: $config_file"
+        log_info "Please copy config/services.env.template to config/services.env and configure it."
+        exit 1
+    fi
+    
+    source "$config_file"
+}
+
+#------------------------------------------------------------------------------
+# Get service configuration
+#------------------------------------------------------------------------------
+get_service_var() {
+    local service="$1"
+    local var_suffix="$2"
+    
+    local upper_service
+    upper_service=$(to_upper "$service")
+    local var_name="${upper_service}_${var_suffix}"
+    
+    echo "${!var_name:-}"
+}
+
+#------------------------------------------------------------------------------
+# Deploy a single service
+#------------------------------------------------------------------------------
+deploy_service() {
+    local service="$1"
+    local tag="$2"
+    
+    # Get service config
+    local image
+    image=$(get_service_var "$service" "IMAGE")
+    local service_name
+    service_name=$(get_service_var "$service" "SERVICE_NAME")
+    local container_name
+    container_name=$(get_service_var "$service" "CONTAINER_NAME")
+    local directory
+    directory=$(get_service_var "$service" "DIRECTORY")
+    local build_args_str
+    build_args_str=$(get_service_var "$service" "BUILD_ARGS")
+    local env_file
+    env_file=$(get_service_var "$service" "ENV_FILE")
+    local health_type
+    health_type=$(get_service_var "$service" "HEALTH_TYPE")
+    local health_port
+    health_port=$(get_service_var "$service" "HEALTH_PORT")
+    local health_path
+    health_path=$(get_service_var "$service" "HEALTH_PATH")
+    
+    # Validate config
+    if [[ -z "$image" || -z "$service_name" ]]; then
+        log_error "Service '$service' not properly configured"
+        return 1
+    fi
+    
+    # Default directory
+    directory="${directory:-${DEPLOY_ROOT}}"
+    
+    # Expand relative path
+    if [[ "$directory" != /* ]]; then
+        directory="${DEPLOY_ROOT}/${directory}"
+    fi
+    
+    print_section "DEPLOYING: ${service}"
+    
+    print_status "Image" "$image"
+    print_status "Tag" "$tag"
+    print_status "Service" "$service_name"
+    print_status "Container" "$container_name"
+    print_status "Directory" "$directory"
+    print_status "Environment" "$ENVIRONMENT" "$YELLOW"
+    
+    echo ""
+    
+    # Dry-run mode
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo -e "${MAGENTA}⚡ DRY-RUN MODE - No changes will be made${RESET}"
+        echo ""
+        
+        if [[ "$SKIP_BUILD" != "true" ]]; then
+            docker_build_dry_run "$image" "$tag" "$directory" "Dockerfile"
+        fi
+        
+        if [[ "$SKIP_DEPLOY" != "true" ]]; then
+            ssh_deploy_dry_run "$REMOTE_HOST" "$REMOTE_COMPOSE_DIR" "$image" "$tag" "$service_name"
+        fi
+        
+        return 0
+    fi
+    
+    # Pre-flight checks
+    if [[ "$SKIP_CHECKS" != "true" ]]; then
+        if ! run_preflight_checks "$directory"; then
+            log_error "Pre-flight checks failed"
+            return 1
+        fi
+    fi
+    
+    # Confirmation
+    if [[ "$SKIP_CONFIRM" != "true" && "$ENVIRONMENT" == "production" ]]; then
+        echo ""
+        echo -e "${YELLOW}${ICON_WARN}${RESET} ${BOLD}You are deploying to PRODUCTION${RESET}"
+        if ! confirm "Continue with deployment?"; then
+            log_info "Deployment cancelled"
+            return 0
+        fi
+    fi
+    
+    # Get current tag for rollback
+    local current_tag=""
+    if [[ "$ROLLBACK" != "true" ]]; then
+        current_tag=$(ssh_get_current_tag "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" "$container_name" 2>/dev/null || echo "")
+        if [[ -n "$current_tag" ]]; then
+            log_info "Current running tag: $current_tag (saved for rollback)"
+            echo "$current_tag" > "${DEPLOY_ROOT}/.deploy-backups/${service}.last"
+        fi
+    fi
+    
+    local start_time
+    start_time=$(date +%s)
+    
+    # Build & Push
+    if [[ "$SKIP_BUILD" != "true" ]]; then
+        print_section "BUILD & PUSH"
+        
+        # Load service-specific env file if specified
+        if [[ -n "$env_file" && -f "${directory}/${env_file}" ]]; then
+            log_info "Loading build environment from ${env_file}"
+            load_env_file "${directory}/${env_file}"
+        fi
+        
+        # Parse build args
+        local build_args=()
+        if [[ -n "$build_args_str" ]]; then
+            IFS=',' read -ra arg_names <<< "$build_args_str"
+            for arg_name in "${arg_names[@]}"; do
+                arg_name=$(echo "$arg_name" | xargs)  # trim
+                local arg_value="${!arg_name:-}"
+                if [[ -n "$arg_value" ]]; then
+                    build_args+=("${arg_name}=${arg_value}")
+                fi
+            done
+        fi
+        
+        # Build
+        if ! docker_build "$image" "$tag" "$directory" "Dockerfile" "${build_args[@]}"; then
+            log_error "Build failed"
+            return 1
+        fi
+        
+        # Push
+        if ! docker_push "$image" "$tag"; then
+            log_error "Push failed"
+            return 1
+        fi
+    fi
+    
+    # Deploy
+    if [[ "$SKIP_DEPLOY" != "true" ]]; then
+        print_section "DEPLOY"
+        
+        if ! ssh_deploy "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_COMPOSE_DIR" "$SSH_KEY" \
+                       "$image" "$tag" "$service_name" "$container_name"; then
+            log_error "Deployment failed"
+            return 1
+        fi
+        
+        # Health check
+        if [[ -n "$health_type" && -n "$health_port" ]]; then
+            print_section "HEALTH CHECK"
+            
+            case "$health_type" in
+                http)
+                    ssh_health_check_http "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" \
+                                         "$health_port" "${health_path:-/health}" 30 "$container_name" || true
+                    ;;
+                tcp)
+                    ssh_health_check_tcp "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" \
+                                        "$health_port" 30 || true
+                    ;;
+            esac
+        fi
+    fi
+    
+    local end_time
+    end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    
+    echo ""
+    log_done "Deployment completed in $(relative_time $duration)"
+    print_status "Image" "${image}:${tag}"
+    if [[ -n "$current_tag" ]]; then
+        print_status "Previous" "$current_tag" "$GRAY"
+    fi
+    
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# Rollback a service
+#------------------------------------------------------------------------------
+rollback_service() {
+    local service="$1"
+    
+    # Get service config
+    local image
+    image=$(get_service_var "$service" "IMAGE")
+    local service_name
+    service_name=$(get_service_var "$service" "SERVICE_NAME")
+    local container_name
+    container_name=$(get_service_var "$service" "CONTAINER_NAME")
+    
+    # Get rollback tag
+    local rollback_tag=""
+    local backup_file="${DEPLOY_ROOT}/.deploy-backups/${service}.last"
+    
+    if [[ -f "$backup_file" ]]; then
+        rollback_tag=$(cat "$backup_file")
+    fi
+    
+    if [[ -z "$rollback_tag" ]]; then
+        log_error "No previous version found for rollback"
+        log_info "Backup file not found: $backup_file"
+        return 1
+    fi
+    
+    print_section "ROLLBACK: ${service}"
+    
+    print_status "Image" "$image"
+    print_status "Rollback to" "$rollback_tag" "$YELLOW"
+    print_status "Service" "$service_name"
+    
+    echo ""
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo -e "${MAGENTA}⚡ DRY-RUN MODE - No changes will be made${RESET}"
+        ssh_deploy_dry_run "$REMOTE_HOST" "$REMOTE_COMPOSE_DIR" "$image" "$rollback_tag" "$service_name"
+        return 0
+    fi
+    
+    if [[ "$SKIP_CONFIRM" != "true" ]]; then
+        if ! confirm "Rollback to ${rollback_tag}?"; then
+            log_info "Rollback cancelled"
+            return 0
+        fi
+    fi
+    
+    if ! ssh_rollback "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_COMPOSE_DIR" "$SSH_KEY" \
+                     "$image" "$rollback_tag" "$service_name" "$container_name"; then
+        log_error "Rollback failed"
+        return 1
+    fi
+    
+    log_done "Rollback completed: ${image}:${rollback_tag}"
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# Main
+#------------------------------------------------------------------------------
+main() {
+    local services=()
+    local deploy_all=false
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -v|--version)
+                show_version
+                exit 0
+                ;;
+            -l|--list)
+                load_config
+                list_available_services
+                exit 0
+                ;;
+            -a|--all)
+                deploy_all=true
+                shift
+                ;;
+            -e|--env)
+                ENVIRONMENT="$2"
+                shift 2
+                ;;
+            -t|--tag)
+                CUSTOM_TAG="$2"
+                shift 2
+                ;;
+            -n|--dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            -y|--yes)
+                SKIP_CONFIRM=true
+                shift
+                ;;
+            --skip-checks)
+                SKIP_CHECKS=true
+                shift
+                ;;
+            --build-only)
+                SKIP_DEPLOY=true
+                shift
+                ;;
+            --deploy-only)
+                SKIP_BUILD=true
+                shift
+                ;;
+            --rollback)
+                ROLLBACK=true
+                shift
+                ;;
+            --no-logs)
+                SHOW_LOGS=false
+                shift
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+            *)
+                services+=("$1")
+                shift
+                ;;
+        esac
+    done
+    
+    # Load configuration first (to get PROJECT_NAME)
+    load_config
+    
+    # Show header with project name
+    local project_name="${PROJECT_NAME:-Deploy CLI}"
+    print_header "${project_name} DEPLOY v${VERSION}"
+    
+    # Create backup directory
+    mkdir -p "${DEPLOY_ROOT}/.deploy-backups"
+    
+    # Validate --deploy-only requires --tag
+    if [[ "$SKIP_BUILD" == "true" && -z "$CUSTOM_TAG" ]]; then
+        log_error "--deploy-only requires --tag to be specified"
+        exit 1
+    fi
+    
+    # Get services to deploy
+    if [[ "$deploy_all" == "true" ]]; then
+        IFS=',' read -ra services <<< "$SERVICES"
+    fi
+    
+    if [[ ${#services[@]} -eq 0 ]]; then
+        log_error "No services specified"
+        echo ""
+        echo "Usage: ./deploy.sh [OPTIONS] [SERVICE...]"
+        echo "       ./deploy.sh --list    # to see available services"
+        echo "       ./deploy.sh --help    # for more information"
+        exit 1
+    fi
+    
+    # Validate services
+    IFS=',' read -ra available_services <<< "$SERVICES"
+    for service in "${services[@]}"; do
+        local found=false
+        for available in "${available_services[@]}"; do
+            if [[ "$service" == "$available" ]]; then
+                found=true
+                break
+            fi
+        done
+        if [[ "$found" != "true" ]]; then
+            log_error "Unknown service: $service"
+            log_info "Available services: ${SERVICES}"
+            exit 1
+        fi
+    done
+    
+    # Determine tag
+    local tag="${CUSTOM_TAG:-$(get_git_sha)}"
+    
+    # Show deployment info
+    print_status "Services" "${services[*]}"
+    print_status "Environment" "$ENVIRONMENT"
+    print_status "Tag" "$tag"
+    print_status "Mode" "$(if [[ "$DRY_RUN" == "true" ]]; then echo 'DRY-RUN'; elif [[ "$ROLLBACK" == "true" ]]; then echo 'ROLLBACK'; else echo 'DEPLOY'; fi)"
+    
+    echo ""
+    
+    # Deploy each service
+    local failed=0
+    for service in "${services[@]}"; do
+        if [[ "$ROLLBACK" == "true" ]]; then
+            rollback_service "$service" || ((failed++))
+        else
+            deploy_service "$service" "$tag" || ((failed++))
+        fi
+    done
+    
+    # Summary
+    echo ""
+    print_divider
+    
+    if ((failed > 0)); then
+        log_error "Deployment completed with ${failed} error(s)"
+        exit 1
+    else
+        log_done "All deployments completed successfully!"
+    fi
+}
+
+# Run main
+main "$@"

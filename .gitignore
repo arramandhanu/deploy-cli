@@ -1,0 +1,33 @@
+# Deployment Script - Git Ignore
+
+# Environment files (contain secrets)
+.env
+.env.staging
+.env.production
+.env.local
+
+# Actual services config (contains server details)
+config/services.env
+
+# Deployment backups
+.deploy-backups/
+
+# SSH keys (should never be in repo)
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
