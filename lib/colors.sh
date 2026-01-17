@@ -67,16 +67,22 @@ log_dry() {
 
 print_header() {
     local title="$1"
-    local width=60
-    local padding=$(( (width - ${#title} - 2) / 2 ))
-    local line=""
+    local box_width=60
+    local title_len=${#title}
+    local padding=$(( (box_width - title_len) / 2 ))
+    local padding_left=""
+    local padding_right=""
     
-    for ((i=0; i<width; i++)); do line+="═"; done
+    for ((i=0; i<padding; i++)); do padding_left+=" "; done
+    for ((i=0; i<(box_width - title_len - padding); i++)); do padding_right+=" "; done
+    
+    local border_line=""
+    for ((i=0; i<box_width; i++)); do border_line+="═"; done
     
     echo ""
-    echo -e "${CYAN}╔${line}╗${RESET}"
-    printf "${CYAN}║${RESET}%*s ${BOLD}%s${RESET} %*s${CYAN}║${RESET}\n" $padding "" "$title" $((padding - (${#title} % 2))) ""
-    echo -e "${CYAN}╚${line}╝${RESET}"
+    echo -e "${CYAN}╔${border_line}╗${RESET}"
+    echo -e "${CYAN}║${RESET}${padding_left}${BOLD}${title}${RESET}${padding_right}${CYAN}║${RESET}"
+    echo -e "${CYAN}╚${border_line}╝${RESET}"
     echo ""
 }
 

@@ -45,6 +45,7 @@ SHOW_LOGS=true
 CUSTOM_TAG=""
 ENVIRONMENT="production"
 ROLLBACK=false
+LOCAL_MODE=false
 
 #------------------------------------------------------------------------------
 # Show usage/help
@@ -62,9 +63,22 @@ show_help() {
     fi
     
     echo ""
-    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${CYAN}║${RESET}           ${BOLD}${WHITE}${project_name} DEPLOYMENT TOOL${RESET} ${GRAY}v${VERSION}${RESET}${CYAN}                  ║${RESET}"
-    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${RESET}"
+    # Build header with dynamic centering
+    local title="${project_name} DEPLOYMENT TOOL v${VERSION}"
+    local box_width=63
+    local title_len=${#title}
+    local padding=$(( (box_width - title_len) / 2 ))
+    local padding_left=""
+    local padding_right=""
+    for ((i=0; i<padding; i++)); do padding_left+=" "; done
+    for ((i=0; i<(box_width - title_len - padding); i++)); do padding_right+=" "; done
+    
+    local border_line=""
+    for ((i=0; i<box_width; i++)); do border_line+="═"; done
+    
+    echo -e "${CYAN}╔${border_line}╗${RESET}"
+    echo -e "${CYAN}║${RESET}${padding_left}${BOLD}${WHITE}${title}${RESET}${padding_right}${CYAN}║${RESET}"
+    echo -e "${CYAN}╚${border_line}╝${RESET}"
     echo ""
     echo -e "${BOLD}${YELLOW}USAGE${RESET}"
     echo -e "    ${GREEN}./deploy.sh${RESET} ${GRAY}[OPTIONS]${RESET} ${CYAN}[SERVICE...]${RESET}"
@@ -93,6 +107,7 @@ show_help() {
     echo -e "    ${GRAY}--deploy-only${RESET}       Deploy only, skip build (requires --tag)"
     echo -e "    ${GRAY}--rollback${RESET}          Rollback to previous version"
     echo -e "    ${GRAY}--no-logs${RESET}           Don't show container logs after deploy"
+    echo -e "    ${GREEN}--local${RESET}             Run locally on server (no SSH, for server-side deployment)"
     echo ""
     echo -e "${BOLD}${YELLOW}EXAMPLES${RESET}"
     echo -e "    ${GRAY}# Deploy a single service${RESET}"
@@ -112,6 +127,13 @@ show_help() {
     echo ""
     echo -e "    ${GRAY}# Rollback to previous version${RESET}"
     echo -e "    ${WHITE}./deploy.sh my-service --rollback${RESET}"
+    echo ""
+    echo -e "    ${GRAY}# Deploy locally on server (no SSH needed)${RESET}"
+    echo -e "    ${WHITE}./deploy.sh my-service --local${RESET}"
+    echo ""
+    echo -e "${BOLD}${YELLOW}DEPLOYMENT MODES${RESET}"
+    echo -e "    ${CYAN}Remote (default)${RESET}    Run from laptop, deploy via SSH to server"
+    echo -e "    ${CYAN}Local (--local)${RESET}     Run directly on server, no SSH required"
     echo ""
     echo -e "${BOLD}${YELLOW}ENVIRONMENT${RESET}"
     echo -e "    ${CYAN}DOCKERHUB_USERNAME${RESET}  DockerHub username ${RED}(required)${RESET}"
@@ -249,9 +271,14 @@ deploy_service() {
     # Default directory
     directory="${directory:-${DEPLOY_ROOT}}"
     
-    # Expand relative path
+    # Resolve path - handle relative paths properly
     if [[ "$directory" != /* ]]; then
-        directory="${DEPLOY_ROOT}/${directory}"
+        # Relative path - resolve from DEPLOY_ROOT
+        directory=$(cd "${DEPLOY_ROOT}" && cd "${directory}" 2>/dev/null && pwd)
+        if [[ -z "$directory" ]]; then
+            # Fallback: just prepend DEPLOY_ROOT
+            directory="${DEPLOY_ROOT}/${directory}"
+        fi
     fi
     
     print_section "DEPLOYING: ${service}"
@@ -262,6 +289,11 @@ deploy_service() {
     print_status "Container" "$container_name"
     print_status "Directory" "$directory"
     print_status "Environment" "$ENVIRONMENT" "$YELLOW"
+    if [[ "$LOCAL_MODE" == "true" ]]; then
+        print_status "Mode" "LOCAL (no SSH)" "$GREEN"
+    else
+        print_status "Mode" "REMOTE via SSH" "$CYAN"
+    fi
     
     echo ""
     
@@ -275,7 +307,7 @@ deploy_service() {
         fi
         
         if [[ "$SKIP_DEPLOY" != "true" ]]; then
-            ssh_deploy_dry_run "$REMOTE_HOST" "$REMOTE_COMPOSE_DIR" "$image" "$tag" "$service_name"
+            ssh_deploy_dry_run "$REMOTE_HOST" "$REMOTE_COMPOSE_DIR" "$image" "$tag" "$service_name" "$LOCAL_MODE"
         fi
         
         return 0
@@ -302,7 +334,11 @@ deploy_service() {
     # Get current tag for rollback
     local current_tag=""
     if [[ "$ROLLBACK" != "true" ]]; then
-        current_tag=$(ssh_get_current_tag "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" "$container_name" 2>/dev/null || echo "")
+        if [[ "$LOCAL_MODE" == "true" ]]; then
+            current_tag=$(local_get_current_tag "$container_name" 2>/dev/null || echo "")
+        else
+            current_tag=$(ssh_get_current_tag "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" "$container_name" 2>/dev/null || echo "")
+        fi
         if [[ -n "$current_tag" ]]; then
             log_info "Current running tag: $current_tag (saved for rollback)"
             echo "$current_tag" > "${DEPLOY_ROOT}/.deploy-backups/${service}.last"
@@ -352,26 +388,48 @@ deploy_service() {
     if [[ "$SKIP_DEPLOY" != "true" ]]; then
         print_section "DEPLOY"
         
-        if ! ssh_deploy "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_COMPOSE_DIR" "$SSH_KEY" \
-                       "$image" "$tag" "$service_name" "$container_name"; then
-            log_error "Deployment failed"
-            return 1
+        if [[ "$LOCAL_MODE" == "true" ]]; then
+            # Local deployment (no SSH)
+            if ! local_deploy "$REMOTE_COMPOSE_DIR" "$image" "$tag" "$service_name" "$container_name"; then
+                log_error "Local deployment failed"
+                return 1
+            fi
+        else
+            # Remote deployment via SSH
+            if ! ssh_deploy "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_COMPOSE_DIR" "$SSH_KEY" \
+                           "$image" "$tag" "$service_name" "$container_name"; then
+                log_error "Deployment failed"
+                return 1
+            fi
         fi
         
         # Health check
         if [[ -n "$health_type" && -n "$health_port" ]]; then
             print_section "HEALTH CHECK"
             
-            case "$health_type" in
-                http)
-                    ssh_health_check_http "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" \
-                                         "$health_port" "${health_path:-/health}" 30 "$container_name" || true
-                    ;;
-                tcp)
-                    ssh_health_check_tcp "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" \
-                                        "$health_port" 30 || true
-                    ;;
-            esac
+            if [[ "$LOCAL_MODE" == "true" ]]; then
+                # Local health check
+                case "$health_type" in
+                    http)
+                        local_health_check_http "$health_port" "${health_path:-/health}" 30 || true
+                        ;;
+                    tcp)
+                        local_health_check_tcp "$health_port" 30 || true
+                        ;;
+                esac
+            else
+                # Remote health check
+                case "$health_type" in
+                    http)
+                        ssh_health_check_http "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" \
+                                             "$health_port" "${health_path:-/health}" 30 "$container_name" || true
+                        ;;
+                    tcp)
+                        ssh_health_check_tcp "$REMOTE_HOST" "$REMOTE_USER" "$SSH_KEY" \
+                                            "$health_port" 30 || true
+                        ;;
+                esac
+            fi
         fi
     fi
     
@@ -438,10 +496,19 @@ rollback_service() {
         fi
     fi
     
-    if ! ssh_rollback "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_COMPOSE_DIR" "$SSH_KEY" \
-                     "$image" "$rollback_tag" "$service_name" "$container_name"; then
-        log_error "Rollback failed"
-        return 1
+    if [[ "$LOCAL_MODE" == "true" ]]; then
+        # Local rollback (no SSH)
+        if ! local_rollback "$REMOTE_COMPOSE_DIR" "$image" "$rollback_tag" "$service_name" "$container_name"; then
+            log_error "Local rollback failed"
+            return 1
+        fi
+    else
+        # Remote rollback via SSH
+        if ! ssh_rollback "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_COMPOSE_DIR" "$SSH_KEY" \
+                         "$image" "$rollback_tag" "$service_name" "$container_name"; then
+            log_error "Rollback failed"
+            return 1
+        fi
     fi
     
     log_done "Rollback completed: ${image}:${rollback_tag}"
@@ -509,6 +576,10 @@ main() {
                 ;;
             --no-logs)
                 SHOW_LOGS=false
+                shift
+                ;;
+            --local)
+                LOCAL_MODE=true
                 shift
                 ;;
             -*)
