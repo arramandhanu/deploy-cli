@@ -246,11 +246,156 @@ ssh_deploy_dry_run() {
     local image_name="$3"
     local tag="$4"
     local service_name="$5"
+    local local_mode="${6:-false}"
     
     echo ""
-    log_dry "ssh ${remote_host}"
-    log_dry "  cd ${remote_compose_dir}"
+    if [[ "$local_mode" == "true" ]]; then
+        log_dry "LOCAL MODE (no SSH)"
+        log_dry "  cd ${remote_compose_dir}"
+    else
+        log_dry "ssh ${remote_host}"
+        log_dry "  cd ${remote_compose_dir}"
+    fi
     log_dry "  sed -i 's|image: ${image_name}:.*|image: ${image_name}:${tag}|' docker-compose.yaml"
     log_dry "  docker compose pull ${service_name}"
     log_dry "  docker compose up -d --no-deps --force-recreate ${service_name}"
+}
+
+#==============================================================================
+# LOCAL DEPLOYMENT FUNCTIONS (no SSH required)
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Deploy service locally (for running on the server itself)
+#------------------------------------------------------------------------------
+local_deploy() {
+    local compose_dir="${1:-${REMOTE_COMPOSE_DIR:-}}"
+    local image_name="$2"
+    local tag="$3"
+    local service_name="$4"
+    local container_name="$5"
+    
+    log_info "Deploying locally in ${compose_dir}..."
+    
+    if [[ ! -d "$compose_dir" ]]; then
+        log_error "Compose directory not found: $compose_dir"
+        return 1
+    fi
+    
+    cd "$compose_dir" || return 1
+    
+    # Update image tag in docker-compose.yaml
+    if [[ -f docker-compose.yaml ]]; then
+        sed -i "s|image: ${image_name}:.*|image: ${image_name}:${tag}|" docker-compose.yaml
+    elif [[ -f docker-compose.yml ]]; then
+        sed -i "s|image: ${image_name}:.*|image: ${image_name}:${tag}|" docker-compose.yml
+    else
+        log_error "No docker-compose.yaml or docker-compose.yml found in ${compose_dir}"
+        return 1
+    fi
+    
+    # Pull and recreate
+    if ! docker compose pull "$service_name"; then
+        log_error "Docker pull failed"
+        return 1
+    fi
+    
+    if ! docker compose up -d --no-deps --force-recreate "$service_name"; then
+        log_error "Docker compose up failed"
+        return 1
+    fi
+    
+    # Show status
+    echo ""
+    log_info "Container Status:"
+    docker ps --filter "name=${container_name}" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+    
+    echo ""
+    log_info "Recent Logs:"
+    docker logs --tail=50 "$container_name" 2>&1 || true
+    
+    log_success "Local deployment completed successfully"
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# Local rollback
+#------------------------------------------------------------------------------
+local_rollback() {
+    local compose_dir="${1:-${REMOTE_COMPOSE_DIR:-}}"
+    local image_name="$2"
+    local rollback_tag="$3"
+    local service_name="$4"
+    local container_name="$5"
+    
+    log_info "Rolling back locally to ${image_name}:${rollback_tag}..."
+    
+    cd "$compose_dir" || return 1
+    
+    # Update image tag
+    if [[ -f docker-compose.yaml ]]; then
+        sed -i "s|image: ${image_name}:.*|image: ${image_name}:${rollback_tag}|" docker-compose.yaml
+    elif [[ -f docker-compose.yml ]]; then
+        sed -i "s|image: ${image_name}:.*|image: ${image_name}:${rollback_tag}|" docker-compose.yml
+    fi
+    
+    docker compose pull "$service_name"
+    docker compose up -d --no-deps --force-recreate "$service_name"
+    
+    docker ps --filter "name=${container_name}"
+    
+    log_success "Local rollback completed successfully"
+    return 0
+}
+
+#------------------------------------------------------------------------------
+# Local health check HTTP
+#------------------------------------------------------------------------------
+local_health_check_http() {
+    local health_port="$1"
+    local health_path="${2:-/health}"
+    local timeout="${3:-30}"
+    
+    log_info "Waiting for service to be healthy..."
+    
+    for ((i=1; i<=timeout; i++)); do
+        if curl -sf "http://localhost:${health_port}${health_path}" > /dev/null 2>&1; then
+            log_success "Service is healthy (HTTP ${health_port}${health_path})"
+            return 0
+        fi
+        sleep 1
+    done
+    
+    log_error "Health check failed after ${timeout}s"
+    return 1
+}
+
+#------------------------------------------------------------------------------
+# Local health check TCP
+#------------------------------------------------------------------------------
+local_health_check_tcp() {
+    local health_port="$1"
+    local timeout="${2:-30}"
+    
+    log_info "Checking if port ${health_port} is listening..."
+    
+    for ((i=1; i<=timeout; i++)); do
+        if nc -z localhost "$health_port" 2>/dev/null || ss -ln | grep -q ":${health_port} "; then
+            log_success "Service is listening on port ${health_port}"
+            return 0
+        fi
+        sleep 1
+    done
+    
+    log_error "Health check failed: port ${health_port} not listening"
+    return 1
+}
+
+#------------------------------------------------------------------------------
+# Get current running image tag locally
+#------------------------------------------------------------------------------
+local_get_current_tag() {
+    local container_name="$1"
+    
+    docker inspect --format='{{.Config.Image}}' "$container_name" 2>/dev/null | cut -d: -f2
 }

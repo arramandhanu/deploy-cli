@@ -162,6 +162,31 @@ chmod +x deploy.sh
 ./deploy.sh frontend --deploy-only --tag abc1234
 ```
 
+### Deployment Modes
+
+The tool supports two deployment modes:
+
+| Mode | Command | Description |
+|:-----|:--------|:------------|
+| **Remote** (default) | `./deploy.sh frontend` | Run from laptop, deploy via SSH to server |
+| **Local** | `./deploy.sh frontend --local` | Run directly on server, no SSH required |
+
+```bash
+# Remote mode (default) - deploy from laptop via SSH
+./deploy.sh frontend
+
+# Local mode - run directly on the server
+./deploy.sh frontend --local
+
+# Local mode with dry-run
+./deploy.sh frontend --local --dry-run
+```
+
+**When to use Local Mode:**
+- Running the script directly ON the deployment server
+- CI/CD pipeline running on the same server as Docker
+- No SSH access needed - all commands run locally
+
 ---
 
 ## ⚙️ Configuration
