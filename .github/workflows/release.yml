@@ -124,10 +124,12 @@ jobs:
               prefix.install Dir["*"]
               bin.install_symlink prefix/"shipctl" => "shipctl"
               bash_completion.install prefix/"completions/shipctl.bash" => "shipctl"
+              zsh_completion.install prefix/"completions/shipctl.bash" => "_shipctl"
             end
 
             def caveats
               <<~EOS
+                Shell completions installed for Bash and Zsh.
                 Run 'shipctl init' in your project directory to get started.
               EOS
             end
