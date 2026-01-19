@@ -48,8 +48,7 @@
 ### Homebrew (Recommended)
 
 ```bash
-brew tap arramandhanu/tap
-brew install shipctl
+brew install arramandhanu/shipctl/shipctl
 ```
 
 ### Quick Install
