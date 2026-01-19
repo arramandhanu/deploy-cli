@@ -17,8 +17,14 @@
 #==============================================================================
 set -euo pipefail
 
-# Script directory
-readonly DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Script directory (resolve symlinks for Homebrew compatibility)
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
+done
+readonly DEPLOY_ROOT="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 export DEPLOY_ROOT
 
 # Source libraries
