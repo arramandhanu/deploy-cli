@@ -1,7 +1,7 @@
-# Deploy CLI - GitLab CI/CD Pipeline
+# shipctl - GitLab CI/CD Pipeline
 #
-# This pipeline deploys services using the deploy.sh CLI tool.
-# Configure your services in config/services.env before use.
+# This pipeline deploys services using shipctl.
+# Configure your services in deploy.env or config/services.env before use.
 #
 # Required CI/CD Variables (Settings > CI/CD > Variables):
 #   DOCKERHUB_USERNAME  - DockerHub username
@@ -28,12 +28,12 @@ validate:
     - apk add --no-cache bash
     - chmod +x ./deploy.sh
     - |
-      if [ -f config/services.env ]; then
-        echo "✓ services.env found"
+      if [ -f deploy.env ] || [ -f config/services.env ]; then
+        echo "✓ Configuration found"
         ./deploy.sh --list || echo "⚠ Could not list services"
       else
-        echo "⚠ config/services.env not found"
-        echo "  Copy config/services.env.template to config/services.env"
+        echo "⚠ No configuration found"
+        echo "  Run: shipctl init"
       fi
   only:
     - merge_requests
