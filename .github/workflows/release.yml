@@ -43,7 +43,7 @@ jobs:
       - name: Create release archive
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
-          ARCHIVE_NAME="deploy-cli-${VERSION}"
+          ARCHIVE_NAME="shipctl-${VERSION}"
           
           mkdir -p dist
           

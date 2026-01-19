@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #==============================================================================
 #
-#   ██████╗ ███████╗██████╗ ██╗      ██████╗ ██╗   ██╗
-#   ██╔══██╗██╔════╝██╔══██╗██║     ██╔═══██╗╚██╗ ██╔╝
-#   ██║  ██║█████╗  ██████╔╝██║     ██║   ██║ ╚████╔╝
-#   ██║  ██║██╔══╝  ██╔═══╝ ██║     ██║   ██║  ╚██╔╝
-#   ██████╔╝███████╗██║     ███████╗╚██████╔╝   ██║
-#   ╚═════╝ ╚══════╝╚═╝     ╚══════╝ ╚═════╝    ╚═╝
+#   ███████╗██╗  ██╗██╗██████╗  ██████╗████████╗██╗
+#   ██╔════╝██║  ██║██║██╔══██╗██╔════╝╚══██╔══╝██║
+#   ███████╗███████║██║██████╔╝██║        ██║   ██║
+#   ╚════██║██╔══██║██║██╔═══╝ ██║        ██║   ██║
+#   ███████║██║  ██║██║██║     ╚██████╗   ██║   ███████╗
+#   ╚══════╝╚═╝  ╚═╝╚═╝╚═╝      ╚═════╝   ╚═╝   ╚══════╝
 #
-#   Deploy CLI - Professional Docker Deployment Tool
-#   https://github.com/arramandhanu/deploy-cli
+#   shipctl - Professional Docker Deployment Tool
+#   https://github.com/arramandhanu/shipctl
 #
-#   Usage: ./deploy.sh [OPTIONS] [SERVICE...]
+#   Usage: shipctl [OPTIONS] [SERVICE...]
 #
 #
 #==============================================================================
@@ -50,7 +50,7 @@ LOCAL_MODE=false
 CUSTOM_CONFIG=""
 
 # Config directories
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/deploy-cli"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/shipctl"
 
 #------------------------------------------------------------------------------
 # Show usage/help
@@ -58,12 +58,12 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/deploy-cli"
 show_help() {
     # Load config to get PROJECT_NAME and services list
     local config_file="${DEPLOY_ROOT}/config/services.env"
-    local project_name="Deploy CLI"
+    local project_name="shipctl"
     local services_list=""
     
     if [[ -f "$config_file" ]]; then
         source "$config_file"
-        project_name="${PROJECT_NAME:-Deploy CLI}"
+        local project_name="${PROJECT_NAME:-shipctl}"
         services_list="${SERVICES:-}"
     fi
     
@@ -149,7 +149,7 @@ show_help() {
     echo -e "${BOLD}${YELLOW}CONFIG LOCATIONS${RESET} (in order of priority)"
     echo -e "    1. ${CYAN}--config FILE${RESET}           Custom path"
     echo -e "    2. ${CYAN}./deploy.env${RESET}            Per-project config"
-    echo -e "    3. ${CYAN}~/.config/deploy-cli/${RESET}   Global user config"
+    echo -e "    3. ${CYAN}~/.config/shipctl/${RESET}   Global user config"
     echo -e "    4. ${CYAN}DEPLOY_ROOT/config/${RESET}     Installation default"
     echo ""
     echo -e "${BOLD}${YELLOW}ENVIRONMENT${RESET}"
@@ -164,7 +164,7 @@ show_help() {
 # Show version
 #------------------------------------------------------------------------------
 show_version() {
-    echo "Deploy CLI version ${VERSION}"
+    echo "shipctl version ${VERSION}"
 }
 
 #------------------------------------------------------------------------------
@@ -210,7 +210,7 @@ list_available_services() {
 
 #------------------------------------------------------------------------------
 # Resolve configuration file path
-# Priority: 1. --config flag  2. ./deploy.env  3. ~/.config/deploy-cli/  4. DEPLOY_ROOT/config/
+# Priority: 1. --config flag  2. ./deploy.env  3. ~/.config/shipctl/  4. DEPLOY_ROOT/config/
 #------------------------------------------------------------------------------
 resolve_config_path() {
     local config_file=""
@@ -616,7 +616,7 @@ cmd_init() {
     local global_mode=false
     
     echo ""
-    echo -e "${BOLD}Deploy CLI - Configuration Setup${RESET}"
+    echo -e "${BOLD}shipctl - Configuration Setup${RESET}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #==============================================================================
-# Deploy CLI - Quick Install Script
+# shipctl - Quick Install Script
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/arramandhanu/deploy-cli/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/arramandhanu/shipctl/main/install.sh | bash
 #
 # Options:
 #   INSTALL_DIR=/custom/path  - Install to custom directory (default: ~/.local/bin)
@@ -11,7 +11,7 @@
 #==============================================================================
 set -euo pipefail
 
-REPO="arramandhanu/deploy-cli"
+REPO="arramandhanu/shipctl"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 COMPLETIONS_DIR="${HOME}/.local/share/bash-completion/completions"
 
@@ -29,7 +29,7 @@ log_warn() { echo -e "${YELLOW}⚠${RESET} $1"; }
 log_error() { echo -e "${RED}✗${RESET} $1"; }
 
 echo ""
-echo -e "${BOLD}Deploy CLI Installer${RESET}"
+echo -e "${BOLD}shipctl Installer${RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -49,11 +49,11 @@ if [[ -z "$LATEST_VERSION" ]]; then
     log_warn "Could not fetch latest release, using main branch"
     LATEST_VERSION="main"
     DOWNLOAD_URL="https://github.com/${REPO}/archive/refs/heads/main.tar.gz"
-    EXTRACT_DIR="deploy-cli-main"
+    EXTRACT_DIR="shipctl-main"
 else
     log_success "Latest version: ${LATEST_VERSION}"
     DOWNLOAD_URL="https://github.com/${REPO}/archive/refs/tags/${LATEST_VERSION}.tar.gz"
-    EXTRACT_DIR="deploy-cli-${LATEST_VERSION#v}"
+    EXTRACT_DIR="shipctl-${LATEST_VERSION#v}"
 fi
 
 # Create directories
@@ -65,27 +65,27 @@ TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
 log_info "Downloading..."
-curl -sL "$DOWNLOAD_URL" -o "$TEMP_DIR/deploy-cli.tar.gz"
+curl -sL "$DOWNLOAD_URL" -o "$TEMP_DIR/shipctl.tar.gz"
 
 log_info "Extracting..."
-tar -xzf "$TEMP_DIR/deploy-cli.tar.gz" -C "$TEMP_DIR"
+tar -xzf "$TEMP_DIR/shipctl.tar.gz" -C "$TEMP_DIR"
 
 # Install
-DEPLOY_HOME="${INSTALL_DIR}/deploy-cli"
-rm -rf "$DEPLOY_HOME"
-mv "$TEMP_DIR/$EXTRACT_DIR" "$DEPLOY_HOME"
+SHIPCTL_HOME="${INSTALL_DIR}/shipctl"
+rm -rf "$SHIPCTL_HOME"
+mv "$TEMP_DIR/$EXTRACT_DIR" "$SHIPCTL_HOME"
 
 # Create symlink
-ln -sf "$DEPLOY_HOME/deploy.sh" "$INSTALL_DIR/deploy"
-chmod +x "$INSTALL_DIR/deploy"
+ln -sf "$SHIPCTL_HOME/deploy.sh" "$INSTALL_DIR/shipctl"
+chmod +x "$INSTALL_DIR/shipctl"
 
 # Install completions
-if [[ -f "$DEPLOY_HOME/completions/deploy.bash" ]]; then
-    cp "$DEPLOY_HOME/completions/deploy.bash" "$COMPLETIONS_DIR/deploy"
+if [[ -f "$SHIPCTL_HOME/completions/shipctl.bash" ]]; then
+    cp "$SHIPCTL_HOME/completions/shipctl.bash" "$COMPLETIONS_DIR/shipctl"
     log_success "Completions installed"
 fi
 
-log_success "Installed to: $INSTALL_DIR/deploy"
+log_success "Installed to: $INSTALL_DIR/shipctl"
 
 echo ""
 echo -e "${BOLD}Next steps:${RESET}"
@@ -101,12 +101,11 @@ fi
 
 echo "  2. Configure your project:"
 echo ""
-echo -e "     ${CYAN}cd $DEPLOY_HOME${RESET}"
-echo -e "     ${CYAN}cp config/services.env.template config/services.env${RESET}"
-echo -e "     ${CYAN}nano config/services.env${RESET}"
+echo -e "     ${CYAN}cd /path/to/your/project${RESET}"
+echo -e "     ${CYAN}shipctl init${RESET}"
 echo ""
-echo "  3. Run deploy:"
+echo "  3. Run shipctl:"
 echo ""
-echo -e "     ${CYAN}deploy --help${RESET}"
+echo -e "     ${CYAN}shipctl --help${RESET}"
 echo ""
 log_success "Installation complete!"
