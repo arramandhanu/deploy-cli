@@ -92,7 +92,7 @@ show_help() {
     echo -e "${CYAN}╚${border_line}╝${RESET}"
     echo ""
     echo -e "${BOLD}${YELLOW}USAGE${RESET}"
-    echo -e "    ${GREEN}./deploy.sh${RESET} ${GRAY}[OPTIONS]${RESET} ${CYAN}[SERVICE...]${RESET}"
+    echo -e "    ${GREEN}shipctl${RESET} ${GRAY}[OPTIONS]${RESET} ${CYAN}[SERVICE...]${RESET}"
     echo ""
     echo -e "${BOLD}${YELLOW}SERVICES${RESET}"
     if [[ -n "$services_list" ]]; then
@@ -129,28 +129,28 @@ show_help() {
     echo -e "    ${WHITE}deploy init${RESET}"
     echo ""
     echo -e "    ${GRAY}# Deploy a single service${RESET}"
-    echo -e "    ${WHITE}./deploy.sh my-service${RESET}"
+    echo -e "    ${WHITE}shipctl my-service${RESET}"
     echo ""
     echo -e "    ${GRAY}# Deploy multiple services${RESET}"
-    echo -e "    ${WHITE}./deploy.sh frontend backend${RESET}"
+    echo -e "    ${WHITE}shipctl frontend backend${RESET}"
     echo ""
     echo -e "    ${GRAY}# Deploy all services${RESET}"
-    echo -e "    ${WHITE}./deploy.sh --all${RESET}"
+    echo -e "    ${WHITE}shipctl --all${RESET}"
     echo ""
     echo -e "    ${GRAY}# Use custom config file${RESET}"
-    echo -e "    ${WHITE}./deploy.sh --config /path/to/config.env frontend${RESET}"
+    echo -e "    ${WHITE}shipctl --config /path/to/config.env frontend${RESET}"
     echo ""
     echo -e "    ${GRAY}# Preview deployment (dry-run)${RESET}"
-    echo -e "    ${WHITE}./deploy.sh my-service --dry-run${RESET}"
+    echo -e "    ${WHITE}shipctl my-service --dry-run${RESET}"
     echo ""
     echo -e "    ${GRAY}# Deploy to staging environment${RESET}"
-    echo -e "    ${WHITE}./deploy.sh my-service --env staging${RESET}"
+    echo -e "    ${WHITE}shipctl my-service --env staging${RESET}"
     echo ""
     echo -e "    ${GRAY}# Rollback to previous version${RESET}"
-    echo -e "    ${WHITE}./deploy.sh my-service --rollback${RESET}"
+    echo -e "    ${WHITE}shipctl my-service --rollback${RESET}"
     echo ""
     echo -e "    ${GRAY}# Deploy locally on server (no SSH needed)${RESET}"
-    echo -e "    ${WHITE}./deploy.sh my-service --local${RESET}"
+    echo -e "    ${WHITE}shipctl my-service --local${RESET}"
     echo ""
     echo -e "${BOLD}${YELLOW}CONFIG LOCATIONS${RESET} (in order of priority)"
     echo -e "    1. ${CYAN}--config FILE${RESET}           Custom path"
@@ -211,7 +211,7 @@ list_available_services() {
     done
     
     echo ""
-    echo -e "${GRAY}Use: ./deploy.sh <service> to deploy${RESET}"
+    echo -e "${GRAY}Use: shipctl <service> to deploy${RESET}"
 }
 
 #------------------------------------------------------------------------------
@@ -784,9 +784,9 @@ main() {
     if [[ ${#services[@]} -eq 0 ]]; then
         log_error "No services specified"
         echo ""
-        echo "Usage: ./deploy.sh [OPTIONS] [SERVICE...]"
-        echo "       ./deploy.sh --list    # to see available services"
-        echo "       ./deploy.sh --help    # for more information"
+        echo "Usage: shipctl [OPTIONS] [SERVICE...]"
+        echo "       shipctl --list    # to see available services"
+        echo "       shipctl --help    # for more information"
         exit 1
     fi
     
