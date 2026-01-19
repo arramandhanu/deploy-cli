@@ -31,7 +31,7 @@ _deploy_completions() {
     fi
     
     # All available options
-    opts="-h --help -v --version -l --list -a --all -e --env -t --tag -n --dry-run -y --yes --skip-checks --build-only --deploy-only --rollback --no-logs --local"
+    opts="-h --help -v --version -l --list -a --all -e --env -t --tag -c --config -n --dry-run -y --yes --skip-checks --build-only --deploy-only --rollback --no-logs --local init"
     
     # Handle option arguments
     case "${prev}" in
