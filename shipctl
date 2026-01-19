@@ -35,6 +35,16 @@ source "${DEPLOY_ROOT}/lib/docker.sh"
 source "${DEPLOY_ROOT}/lib/ssh.sh"
 source "${DEPLOY_ROOT}/lib/git.sh"
 
+# Orchestrator and provider modules
+source "${DEPLOY_ROOT}/lib/orchestrator.sh"
+source "${DEPLOY_ROOT}/lib/orchestrators/compose.sh"
+source "${DEPLOY_ROOT}/lib/orchestrators/swarm.sh"
+source "${DEPLOY_ROOT}/lib/provider.sh"
+source "${DEPLOY_ROOT}/lib/providers/aws.sh"
+source "${DEPLOY_ROOT}/lib/providers/gcp.sh"
+source "${DEPLOY_ROOT}/lib/providers/azure.sh"
+source "${DEPLOY_ROOT}/lib/providers/alibaba.sh"
+
 #------------------------------------------------------------------------------
 # Version
 #------------------------------------------------------------------------------
@@ -54,6 +64,12 @@ ENVIRONMENT="production"
 ROLLBACK=false
 LOCAL_MODE=false
 CUSTOM_CONFIG=""
+
+# Orchestrator and cloud provider defaults
+ORCHESTRATOR="${ORCHESTRATOR:-compose}"
+CLOUD_PROVIDER="${CLOUD_PROVIDER:-local}"
+STACK_NAME="${STACK_NAME:-}"
+CLUSTER_NAME="${CLUSTER_NAME:-}"
 
 # Config directories
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/shipctl"
@@ -119,7 +135,15 @@ show_help() {
     echo -e "    ${GRAY}--deploy-only${RESET}       Deploy only, skip build (requires --tag)"
     echo -e "    ${GRAY}--rollback${RESET}          Rollback to previous version"
     echo -e "    ${GRAY}--no-logs${RESET}           Don't show container logs after deploy"
-    echo -e "    ${GREEN}--local${RESET}             Run locally on server (no SSH, for server-side deployment)"
+    echo -e "    ${GREEN}--local${RESET}             Run locally on server (no SSH)"
+    echo ""
+    echo -e "${BOLD}${YELLOW}ORCHESTRATION${RESET}"
+    echo -e "    ${GREEN}--orchestrator${RESET} ${GRAY}TYPE${RESET} Orchestrator: compose (default), swarm"
+    echo -e "    ${GREEN}--stack${RESET} ${GRAY}NAME${RESET}         Stack name for Docker Swarm"
+    echo ""
+    echo -e "${BOLD}${YELLOW}CLOUD PROVIDERS${RESET}"
+    echo -e "    ${GREEN}--provider${RESET} ${GRAY}CLOUD${RESET}     Cloud provider: local (default), aws, gcp, azure, alibaba"
+    echo -e "    ${GREEN}--cluster${RESET} ${GRAY}NAME${RESET}       Cluster name for ECS/AKS/GKE"
     echo ""
     echo -e "${BOLD}${YELLOW}COMMANDS${RESET}"
     echo -e "    ${GREEN}init${RESET}                Create config template in current directory"
@@ -751,6 +775,22 @@ main() {
             --local)
                 LOCAL_MODE=true
                 shift
+                ;;
+            --orchestrator)
+                ORCHESTRATOR="$2"
+                shift 2
+                ;;
+            --provider)
+                CLOUD_PROVIDER="$2"
+                shift 2
+                ;;
+            --stack)
+                STACK_NAME="$2"
+                shift 2
+                ;;
+            --cluster)
+                CLUSTER_NAME="$2"
+                shift 2
                 ;;
             init)
                 cmd_init
