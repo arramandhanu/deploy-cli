@@ -124,6 +124,51 @@ shipctl frontend --dry-run
 shipctl frontend
 ```
 
+### 3. Deploy!
+
+```bash
+# Standard Docker Compose (via SSH)
+shipctl frontend
+
+# Docker Swarm
+shipctl frontend --orchestrator swarm
+
+# AWS ECS
+shipctl frontend --provider aws --cluster my-cluster
+
+# GCP Cloud Run
+shipctl frontend --provider gcp
+```
+
+## 📖 Cloud Providers
+
+### AWS
+Requires `aws-cli`.
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_REGION=us-east-1
+
+shipctl my-service --provider aws
+```
+
+### Google Cloud (GCP)
+Requires `gcloud`.
+```bash
+export GCP_PROJECT_ID=my-project
+export GOOGLE_APPLICATION_CREDENTIALS=...
+
+shipctl my-service --provider gcp
+```
+
+### Azure
+Requires `az`.
+```bash
+export AZURE_SUBSCRIPTION_ID=...
+
+shipctl my-service --provider azure
+```
+
 ---
 
 ## 📖 Usage
@@ -187,30 +232,7 @@ shipctl frontend --rollback
 | 4 | `/etc/shipctl/` | System-wide (Linux) |
 | 5 | Installation default | Development only |
 
-### Project Structure
 
-```
-shipctl/
-├── shipctl                    # Main CLI (symlink as 'shipctl')
-├── install.sh                   # Quick install script
-├── lib/                         # Library modules
-│   ├── colors.sh               # Terminal colors & logging
-│   ├── utils.sh                # Utility functions
-│   ├── checks.sh               # Pre-flight validations
-│   ├── docker.sh               # Docker operations
-│   ├── ssh.sh                  # SSH deployment logic
-│   └── git.sh                  # Git repository operations
-├── completions/
-│   └── shipctl.bash            # Shell autocompletion
-├── Formula/
-│   └── shipctl.rb              # Homebrew formula
-├── config/
-│   └── services.env.template   # Configuration template
-├── .github/workflows/
-│   ├── deploy.yml              # CI/CD deployment
-│   └── release.yml             # Automated releases
-└── CHANGELOG.md                 # Version history
-```
 
 ### Service Configuration
 
