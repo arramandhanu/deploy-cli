@@ -40,6 +40,8 @@
 | 📂 **Git Repository Support** | Clone and build from Git URLs (SSH or HTTPS) |
 | ⌨️ **Tab Autocompletion** | Shell completion for commands, options, and services |
 | 🎨 **Beautiful Output** | Colored terminal UI with status icons |
+| 🐳 **Multi-Orchestration** | Docker Compose, Docker Swarm, and Kubernetes |
+| ☁️ **Cloud Providers** | AWS ECS, GCP Cloud Run, Azure ACI, Alibaba ECI |
 
 ---
 
@@ -132,6 +134,9 @@ shipctl frontend
 
 # Docker Swarm
 shipctl frontend --orchestrator swarm
+
+# Kubernetes
+shipctl frontend --orchestrator kubernetes
 
 # AWS ECS
 shipctl frontend --provider aws --cluster my-cluster
@@ -255,6 +260,29 @@ Pre-configured workflows available for:
 - **GitHub Actions** (`.github/workflows/deploy.yml`)
 - **GitLab CI** (`.gitlab-ci.yml`)
 - **Bitbucket Pipelines** (`bitbucket-pipelines.yml`)
+
+---
+
+## 🧪 Testing
+
+Run the test suite to verify all modules:
+
+```bash
+# Run all tests
+./tests/run_tests.sh
+
+# Syntax checks only
+./tests/run_tests.sh --syntax
+
+# Unit tests only
+./tests/run_tests.sh --unit
+```
+
+Tests include:
+- Syntax verification for all orchestrator and provider modules
+- Function existence checks
+- CLI help validation
+- Configuration template verification
 
 ---
 
