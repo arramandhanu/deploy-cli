@@ -12,6 +12,8 @@
 # Available orchestrators
 readonly ORCHESTRATOR_COMPOSE="compose"
 readonly ORCHESTRATOR_SWARM="swarm"
+readonly ORCHESTRATOR_KUBERNETES="kubernetes"
+readonly ORCHESTRATOR_K8S="k8s"  # Alias
 
 # Default orchestrator
 ORCHESTRATOR="${ORCHESTRATOR:-compose}"
@@ -47,9 +49,12 @@ orchestrator_validate() {
         swarm)
             validate_swarm_prerequisites
             ;;
+        kubernetes|k8s)
+            validate_kubernetes_prerequisites
+            ;;
         *)
             log_error "Unknown orchestrator: $orchestrator"
-            log_info "Supported orchestrators: compose, swarm"
+            log_info "Supported orchestrators: compose, swarm, kubernetes"
             return 1
             ;;
     esac
@@ -94,6 +99,29 @@ validate_swarm_prerequisites() {
 }
 
 #------------------------------------------------------------------------------
+# Validate Kubernetes prerequisites
+#------------------------------------------------------------------------------
+validate_kubernetes_prerequisites() {
+    # Check if kubectl is available
+    if ! command -v kubectl &>/dev/null; then
+        log_error "kubectl is not installed"
+        log_info "Install from: https://kubernetes.io/docs/tasks/tools/"
+        return 1
+    fi
+    
+    # For local mode, verify cluster connectivity
+    if [[ "${LOCAL_MODE:-false}" == "true" ]]; then
+        if ! kubectl cluster-info &>/dev/null; then
+            log_warn "Cannot connect to Kubernetes cluster"
+            log_info "Check your kubeconfig and context"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+#------------------------------------------------------------------------------
 # Deploy using the specified orchestrator
 #------------------------------------------------------------------------------
 orchestrator_deploy() {
@@ -110,6 +138,9 @@ orchestrator_deploy() {
             ;;
         swarm)
             swarm_deploy "$image" "$tag" "$service_name" "$compose_file" "$stack_name"
+            ;;
+        kubernetes|k8s)
+            k8s_deploy "$image" "$tag" "$service_name" "$compose_file" "$stack_name"
             ;;
         *)
             log_error "Unknown orchestrator: $orchestrator"
@@ -136,6 +167,9 @@ orchestrator_rollback() {
         swarm)
             swarm_rollback "$image" "$tag" "$service_name" "$stack_name"
             ;;
+        kubernetes|k8s)
+            k8s_rollback "$image" "$tag" "$service_name"
+            ;;
         *)
             log_error "Unknown orchestrator: $orchestrator"
             return 1
@@ -157,6 +191,9 @@ orchestrator_status() {
             ;;
         swarm)
             swarm_status "$service_name" "$stack_name"
+            ;;
+        kubernetes|k8s)
+            k8s_status "$service_name"
             ;;
         *)
             log_error "Unknown orchestrator: $orchestrator"
@@ -181,6 +218,9 @@ orchestrator_scale() {
         swarm)
             swarm_scale "$service_name" "$replicas" "$stack_name"
             ;;
+        kubernetes|k8s)
+            k8s_scale "$service_name" "$replicas"
+            ;;
         *)
             log_error "Unknown orchestrator: $orchestrator"
             return 1
@@ -202,6 +242,9 @@ orchestrator_get_current_tag() {
             ;;
         swarm)
             swarm_get_current_tag "$container_name" "$stack_name"
+            ;;
+        kubernetes|k8s)
+            k8s_get_current_tag "$container_name"
             ;;
         *)
             log_error "Unknown orchestrator: $orchestrator"
